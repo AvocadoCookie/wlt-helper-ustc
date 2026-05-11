@@ -2,6 +2,8 @@ use std::{env, fs, path::Path};
 
 use serde::{Deserialize, Serialize};
 
+pub mod nm;
+
 pub const SOCKET_FILE: &str = "/tmp/wlt-helper-socket.sock";
 
 #[derive(Debug, Serialize, Deserialize)]
