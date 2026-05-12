@@ -217,7 +217,7 @@ async fn watch_by_ping() -> Result<(), Error> {
 async fn ping_site(client: &Client, site: &str) -> bool {
     match tokio::time::timeout(
         Duration::from_secs(10),
-        client.get(site).send(),
+        client.head(site).send(),
     )
     .await
     {
