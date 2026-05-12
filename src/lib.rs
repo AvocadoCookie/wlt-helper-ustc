@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::{borrow::Cow, env, fs, path::Path};
 use url::Url;
-use serde::{Deserialize, Serialize};
 
 pub mod nm;
 
@@ -100,10 +100,9 @@ const fn default_site() -> Cow<'static, str> {
 
 impl Config {
     fn get_path() -> String {
-        format!(
-            "/home/{}/.config/wlt-helper/config.toml",
-            env::var("USER").unwrap_or_default()
-        )
+        let base = env::var("XDG_CONFIG_HOME")
+            .unwrap_or_else(|_| format!("{}/.config", env::var("HOME").unwrap_or_default()));
+        format!("{}/wlt-helper/config.toml", base)
     }
 
     pub fn get_config() -> Result<Config, Error> {
