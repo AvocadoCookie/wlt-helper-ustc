@@ -2,7 +2,7 @@ use std::{collections::HashMap, fs};
 
 use oo7::{Keyring, Secret};
 use reqwest::Client;
-use tokio::{io::AsyncReadExt, net::UnixListener, sync::OnceCell};
+use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixListener, sync::OnceCell};
 use tracing::Level;
 use wlt_helper::{
     Config, Error, SOCKET_FILE,
@@ -147,13 +147,13 @@ async fn check_wireless(ac_proxy: &ActiveConnectionProxy<'_>) -> Result<bool, Er
     Ok(ac_id == "ustcnet")
 }
 
-async fn log_in() -> Result<(), Error> {
+async fn log_in() -> Result<String, Error> {
     // 检查是否需要登录
     match need_log_in().await {
         Ok(flag) => {
             if !flag {
                 tracing::info!("未检测到网络通连接，或网络通已登录");
-                return Ok(());
+                return Ok("已连接，无需登录".into());
             }
         }
         Err(e) => {
@@ -189,7 +189,7 @@ async fn log_in() -> Result<(), Error> {
 
     if response.headers().contains_key("set-cookie") {
         tracing::info!("登录成功");
-        Ok(())
+        Ok("登录成功".into())
     } else {
         Err(Error::Other(format!("登录失败，响应：{:?}", response)))
     }
@@ -215,8 +215,9 @@ async fn main() {
 
     let listener = UnixListener::bind(SOCKET_FILE).unwrap();
 
-    if let Err(e) = log_in().await {
-        tracing::error!("{}", e);
+    match log_in().await {
+        Ok(msg) => tracing::info!("{}", msg),
+        Err(e) => tracing::error!("{}", e),
     }
 
     loop {
@@ -232,9 +233,14 @@ async fn main() {
                         tracing::debug!("received: {}", String::from_utf8_lossy(&buf[..n]));
 
                         if &buf[..n] == b"LOGIN" || &buf[..n] == b"REFRESH" {
-                            if let Err(e) = log_in().await {
-                                tracing::error!("{}", e);
-                            }
+                            let response = match log_in().await {
+                                Ok(msg) => format!("OK: {}\n", msg),
+                                Err(e) => {
+                                    tracing::error!("{}", e);
+                                    format!("ERR: {}\n", e)
+                                }
+                            };
+                            let _ = socket.write_all(response.as_bytes()).await;
                         }
                     }
                     Err(e) => {

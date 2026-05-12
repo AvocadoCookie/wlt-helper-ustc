@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     env, fs,
-    io::{self, Write},
+    io::{self, Read, Write},
     os::unix::net::UnixStream,
     path::Path,
 };
@@ -118,4 +118,15 @@ async fn main() {
             stream.write_all(b"REFRESH").unwrap();
         }
     }
+
+    if let Err(e) = stream.shutdown(std::net::Shutdown::Write) {
+        eprintln!("关闭 socket 写端失败：{}", e);
+        return;
+    }
+    let mut response = String::new();
+    if let Err(e) = stream.read_to_string(&mut response) {
+        eprintln!("读取守护进程响应失败：{}", e);
+        return;
+    }
+    print!("{}", response);
 }
