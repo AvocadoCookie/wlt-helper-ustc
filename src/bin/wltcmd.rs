@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use oo7::Keyring;
 use tokio::sync::OnceCell;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
-use wlt_helper::{Config, SOCKET_FILE};
+use wlt_helper::{Config, Error, SOCKET_FILE};
 
 static KEYRING: OnceCell<Keyring> = OnceCell::const_new();
 
@@ -26,38 +26,29 @@ enum Op {
     Refresh,
 }
 
-async fn store_name_password(name: String, password: String) -> Result<(), String> {
-    let mut config = match Config::get_config() {
-        Ok(c) => c,
-        Err(e) => {
-            return Err(e);
-        }
-    };
+async fn store_name_password(name: String, password: String) -> Result<(), Error> {
+    let mut config = Config::get_config()?;
     config.name = name.clone();
-    if let Err(e) = config.store() {
-        println!("保存配置文件失败");
-        return Err(e);
-    }
+    config.store()?;
 
     let keyring = KEYRING.get().unwrap();
     let mut attr = HashMap::new();
     attr.insert("app", "wlt-helper");
     attr.insert("user", &name);
 
-    match keyring
+    keyring
         .create_item("wlt-helper password store", &attr, password, true)
         .await
-    {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("Error occurred while storing password: {}", e)),
-    }
+        .map_err(|e| Error::Keyring(e.to_string()))?;
+
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() {
     let log_path = format!(
         "/home/{}/.local/share/wlt-helper",
-        env::var("USER").unwrap()
+        env::var("USER").unwrap_or_default()
     );
     let path = Path::new(&log_path);
     if !path.is_dir() {
@@ -91,7 +82,7 @@ async fn main() {
     let mut stream = match UnixStream::connect(SOCKET_FILE) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("Can't connect to socket file {}: {}", SOCKET_FILE, e);
+            eprintln!("无法连接到守护进程（{}）：{}", SOCKET_FILE, e);
             return;
         }
     };
@@ -102,8 +93,7 @@ async fn main() {
             io::stdout().flush().unwrap();
             let mut name = String::new();
             if let Err(e) = io::stdin().read_line(&mut name) {
-                println!("用户名输入失败");
-                tracing::error!("用户名输入失败：{}", e);
+                eprintln!("用户名输入失败：{}", e);
                 return;
             }
             let name = name.trim().to_string();
@@ -111,14 +101,13 @@ async fn main() {
             let password = match rpassword::prompt_password("密码：") {
                 Ok(p) => p.trim().to_string(),
                 Err(e) => {
-                    println!("密码输入失败");
-                    tracing::error!("密码输入失败：{}", e);
+                    eprintln!("密码输入失败：{}", e);
                     return;
                 }
             };
 
             if let Err(e) = store_name_password(name, password).await {
-                println!("密码存储失败");
+                eprintln!("密码存储失败：{}", e);
                 tracing::error!("密码存储失败：{}", e);
                 return;
             }

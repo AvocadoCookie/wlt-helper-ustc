@@ -17,7 +17,7 @@ macro_rules! impl_code_for {
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum ConnectivityState {
-    Unkown = 0,
+    Unknown = 0,
     None = 1,
     Portal = 2,
     Limited = 3,
