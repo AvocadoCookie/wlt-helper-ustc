@@ -1,0 +1,23 @@
+# wlt-helper 配置文件示例
+# 放置于 $XDG_CONFIG_HOME/wlt-helper/config.toml
+# （通常为 ~/.config/wlt-helper/config.toml）
+
+# 用户名（必填）
+name = ""
+
+# 网络通登录类型，可选值 0~8
+# 每个数字对应的含义参考 https://netfee.ustc.edu.cn/faq/index.html#howtousewltterm
+type = 0
+
+# 网络通出口，可选值 0, 3600, 14400, 39600, 50400
+exp = 3600
+
+# 检测模式：nm（NetworkManager D-Bus）或 ping（HTTP 探测）
+check = "ping"
+
+[ping]
+# ping 检测间隔，单位秒
+interval = 3600
+
+# ping 目标 URI，必须为合法 URI
+site = "https://www.baidu.com/"
