@@ -51,13 +51,28 @@ async fn get_name_password() -> Result<(String, String), Error> {
 
 async fn need_log_in() -> Result<bool, Error> {
     let conn = Connection::system().await?;
-    let proxy = NetworkManagerProxy::new(&conn).await?;
+    let nm_proxy = NetworkManagerProxy::new(&conn).await?;
+    let (ac_proxy, ac_type, de_proxy) = get_primary_connection(&conn, &nm_proxy).await?;
 
-    let primary = proxy.primary_connection().await?;
+    // 触发 NM 重新检查连通性
+    nm_proxy.check_connectivity().await?;
+
+    if is_already_connected(&de_proxy).await? {
+        return Ok(false);
+    }
+
+    needs_auth(&conn, &ac_proxy, &ac_type, &de_proxy).await
+}
+
+async fn get_primary_connection<'a>(
+    conn: &'a Connection,
+    nm_proxy: &NetworkManagerProxy<'a>,
+) -> Result<(ActiveConnectionProxy<'a>, String, DeviceProxy<'a>), Error> {
+    let primary = nm_proxy.primary_connection().await?;
     tracing::debug!("主连接：{}", primary);
 
-    let ac_proxy = ActiveConnectionProxy::builder(&conn)
-        .path(primary.as_str())
+    let ac_proxy = ActiveConnectionProxy::builder(conn)
+        .path(primary.clone())
         .unwrap()
         .build()
         .await?;
@@ -70,60 +85,65 @@ async fn need_log_in() -> Result<bool, Error> {
         return Err(Error::Other(format!("连接 {} 无设备", primary)));
     }
 
-    let de_proxy = DeviceProxy::builder(&conn)
+    let de_proxy = DeviceProxy::builder(conn)
         .path(devices[0].to_owned())
         .unwrap()
         .build()
         .await?;
 
-    // 检查是否有网，有网则跳过登录
-    let _ = proxy.check_connectivity().await?;
+    Ok((ac_proxy, ac_type, de_proxy))
+}
+
+async fn is_already_connected(de_proxy: &DeviceProxy<'_>) -> Result<bool, Error> {
     let connectivity = de_proxy.ip4_connectivity().await?;
     if connectivity == ConnectivityState::Full.code() {
         tracing::debug!("网络已连通");
-        return Ok(false);
+        return Ok(true);
     }
+    Ok(false)
+}
 
-    // 如果是有线连接，则检查IP地址
-    if ac_type == "802-3-ethernet" {
-        let ic_path = de_proxy.ip4_config().await?;
-        let ic_proxy = IP4ConfigProxy::builder(&conn)
-            .path(ic_path)
-            .unwrap()
-            .build()
-            .await?;
-
-        let address = ic_proxy.address_data().await?;
-        if address.is_empty() {
-            return Err(Error::Other("无可用 IP 信息".into()));
-        }
-        let address = address[0].to_owned();
-        let ip_val = address
-            .get("address")
-            .ok_or_else(|| Error::Other("IP 地址数据缺失".into()))?;
-        let ip = String::try_from(ip_val.clone())
-            .map_err(|e| Error::Other(format!("IP 地址类型转换失败：{:?}", e)))?;
-
-        if ip.starts_with("114.214.") {
-            return Ok(true);
-        } else {
-            return Ok(false);
-        }
+async fn needs_auth(
+    conn: &Connection,
+    ac_proxy: &ActiveConnectionProxy<'_>,
+    ac_type: &str,
+    de_proxy: &DeviceProxy<'_>,
+) -> Result<bool, Error> {
+    match ac_type {
+        "802-3-ethernet" => check_wired(conn, de_proxy).await,
+        "802-11-wireless" => check_wireless(ac_proxy).await,
+        _ => Err(Error::Other("未知的连接类型".into())),
     }
+}
 
-    // 如果是无线连接，则检查ID
-    if ac_type == "802-11-wireless" {
-        let ac_id = ac_proxy.id().await?;
-        tracing::debug!("{} -> {}", primary, ac_id);
+async fn check_wired(conn: &Connection, de_proxy: &DeviceProxy<'_>) -> Result<bool, Error> {
+    let ic_path = de_proxy.ip4_config().await?;
+    let ic_proxy = IP4ConfigProxy::builder(conn)
+        .path(ic_path)
+        .unwrap()
+        .build()
+        .await?;
+    let ip = get_first_ip(&ic_proxy).await?;
+    Ok(ip.starts_with("114.214."))
+}
 
-        if ac_id == "ustcnet" {
-            return Ok(true);
-        } else {
-            return Ok(false);
-        }
+async fn get_first_ip(ic_proxy: &IP4ConfigProxy<'_>) -> Result<String, Error> {
+    let addresses = ic_proxy.address_data().await?;
+    if addresses.is_empty() {
+        return Err(Error::Other("无可用 IP 信息".into()));
     }
+    let addr = addresses[0].to_owned();
+    let ip_val = addr
+        .get("address")
+        .ok_or_else(|| Error::Other("IP 地址数据缺失".into()))?;
+    String::try_from(ip_val.clone())
+        .map_err(|e| Error::Other(format!("IP 地址类型转换失败：{:?}", e)))
+}
 
-    Err(Error::Other("未知的连接类型".into()))
+async fn check_wireless(ac_proxy: &ActiveConnectionProxy<'_>) -> Result<bool, Error> {
+    let ac_id = ac_proxy.id().await?;
+    tracing::debug!("连接 ID: {}", ac_id);
+    Ok(ac_id == "ustcnet")
 }
 
 async fn log_in() -> Result<(), Error> {
@@ -141,17 +161,14 @@ async fn log_in() -> Result<(), Error> {
     };
     tracing::info!("检测到未登录的网络通连接，尝试登录");
 
-    let client = match CLIENT
+    let client = CLIENT
         .get_or_init(|| async {
             Client::builder()
                 .user_agent(UA)
                 .build()
                 .expect("创建 HTTP 客户端失败")
         })
-        .await
-    {
-        _c => _c,
-    };
+        .await;
 
     let (name, password) = get_name_password().await?;
 
