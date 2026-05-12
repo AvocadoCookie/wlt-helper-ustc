@@ -11,7 +11,7 @@ use tokio::{
 };
 use tracing::Level;
 use wlt_helper::{
-    Config, Error, SOCKET_FILE,
+    CheckMethod, Config, Error, SOCKET_FILE,
     nm::{
         ConnectivityState, NetworkManagerProxy, active_connection::ActiveConnectionProxy,
         device::DeviceProxy, ip4_config::IP4ConfigProxy,
@@ -181,6 +181,66 @@ async fn watch_primary_connection() -> Result<(), Error> {
     Ok(())
 }
 
+async fn watch_by_ping() -> Result<(), Error> {
+    let config = Config::get_config()?;
+    let client = CLIENT
+        .get_or_init(|| async {
+            Client::builder()
+                .user_agent(UA)
+                .build()
+                .expect("创建 HTTP 客户端失败")
+        })
+        .await;
+
+    // Initial check
+    if !ping_site(client, &config.ping.site).await {
+        tracing::info!("初始 ping 检测失败，尝试登录");
+        match log_in().await {
+            Ok(msg) => tracing::info!("{}", msg),
+            Err(e) => tracing::error!("{}", e),
+        }
+    }
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(config.ping.interval as u64)).await;
+
+        if !ping_site(client, &config.ping.site).await {
+            tracing::info!("ping 检测失败，尝试登录");
+            match log_in().await {
+                Ok(msg) => tracing::info!("{}", msg),
+                Err(e) => tracing::error!("自动登录失败：{}", e),
+            }
+        }
+    }
+}
+
+async fn ping_site(client: &Client, site: &str) -> bool {
+    match tokio::time::timeout(
+        Duration::from_secs(10),
+        client.get(site).send(),
+    )
+    .await
+    {
+        Ok(Ok(resp)) => {
+            if resp.status().is_success() {
+                tracing::debug!("ping {} 成功", site);
+                true
+            } else {
+                tracing::debug!("ping {} 返回非 2xx 状态码：{}", site, resp.status());
+                false
+            }
+        }
+        Ok(Err(e)) => {
+            tracing::debug!("ping {} 失败：{}", site, e);
+            false
+        }
+        Err(_) => {
+            tracing::debug!("ping {} 超时", site);
+            false
+        }
+    }
+}
+
 async fn log_in() -> Result<String, Error> {
     // 检查是否需要登录
     match need_log_in().await {
@@ -251,12 +311,24 @@ async fn main() {
 
     let listener = UnixListener::bind(SOCKET_FILE).unwrap();
 
-    tokio::spawn(async {
+    let checker = match Config::get_config() {
+        Ok(c) => c.check,
+        Err(e) => {
+            tracing::error!("读取配置失败：{}，使用默认 ping 模式", e);
+            CheckMethod::Ping
+        }
+    };
+
+    tokio::spawn(async move {
         loop {
-            if let Err(e) = watch_primary_connection().await {
-                tracing::error!("主连接监听异常：{}", e);
+            let result = match checker {
+                CheckMethod::Nm => watch_primary_connection().await,
+                CheckMethod::Ping => watch_by_ping().await,
+            };
+            if let Err(e) = result {
+                tracing::error!("检测任务异常：{}", e);
             }
-            tokio::time::sleep(Duration::from_secs(10)).await;
+            tokio::time::sleep(Duration::from_secs(30)).await;
         }
     });
 

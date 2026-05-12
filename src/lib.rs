@@ -1,5 +1,5 @@
-use std::{env, fs, path::Path};
-
+use std::{borrow::Cow, env, fs, path::Path};
+use url::Url;
 use serde::{Deserialize, Serialize};
 
 pub mod nm;
@@ -50,6 +50,21 @@ impl From<reqwest::Error> for Error {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CheckMethod {
+    Nm,
+    Ping,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct PingConfig {
+    #[serde(default = "default_interval")]
+    pub interval: u32,
+    #[serde(default = "default_site")]
+    pub site: Cow<'static, str>,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub name: String,
@@ -57,6 +72,10 @@ pub struct Config {
     pub r#type: u32,
     #[serde(default = "default_exp")]
     pub exp: u32,
+    #[serde(default = "default_check")]
+    pub check: CheckMethod,
+    #[serde(default)]
+    pub ping: PingConfig,
 }
 
 const fn default_type() -> u32 {
@@ -65,6 +84,18 @@ const fn default_type() -> u32 {
 
 const fn default_exp() -> u32 {
     3600
+}
+
+const fn default_check() -> CheckMethod {
+    CheckMethod::Ping
+}
+
+const fn default_interval() -> u32 {
+    3600
+}
+
+const fn default_site() -> Cow<'static, str> {
+    Cow::Borrowed("https://www.baidu.com/")
 }
 
 impl Config {
@@ -101,9 +132,20 @@ impl Config {
             corrected = true;
         }
 
+        if Url::parse(&config.ping.site).is_err() {
+            tracing::warn!(
+                "配置项 site 的值 {} 不是合法的 URI，已重置为默认值",
+                config.ping.site
+            );
+            config.ping.site = default_site();
+            corrected = true;
+        }
+
         if corrected {
             config.store()?;
         }
+
+        tracing::debug!("已读取到配置：{:?}", config);
 
         Ok(config)
     }

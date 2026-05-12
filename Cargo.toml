@@ -19,6 +19,7 @@ serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2"
 tokio = { version = "1.52.1", features = ["full"] }
 toml = "1.1.2"
+url = "2"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
