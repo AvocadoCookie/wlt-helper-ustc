@@ -46,10 +46,15 @@ async fn store_name_password(name: String, password: String) -> Result<(), Error
 
 #[tokio::main]
 async fn main() {
-    let log_path = format!(
-        "/home/{}/.local/share/wlt-helper",
-        env::var("USER").unwrap_or_default()
-    );
+    let log_path = {
+        let base = env::var("XDG_DATA_HOME").unwrap_or_else(|_| {
+            format!(
+                "{}/.local/share",
+                env::var("HOME").unwrap_or_default()
+            )
+        });
+        format!("{}/wlt-helper", base)
+    };
     let path = Path::new(&log_path);
     if !path.is_dir() {
         if path.exists() {
@@ -61,7 +66,7 @@ async fn main() {
         }
     }
     let (log_file, _guard) =
-        tracing_appender::non_blocking(tracing_appender::rolling::never(path, "client.log"));
+        tracing_appender::non_blocking(tracing_appender::rolling::daily(path, "client.log"));
 
     let env_filter = EnvFilter::new(if cfg!(debug_assertions) {
         "debug"
