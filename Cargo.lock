@@ -3121,6 +3121,7 @@ name = "wlt-helper"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "futures-util",
  "oo7",
  "reqwest",
  "rpassword",

@@ -1,4 +1,6 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, time::Duration};
+
+use futures_util::StreamExt;
 
 use oo7::{Keyring, Secret};
 use reqwest::Client;
@@ -147,6 +149,35 @@ async fn check_wireless(ac_proxy: &ActiveConnectionProxy<'_>) -> Result<bool, Er
     Ok(ac_id == "ustcnet")
 }
 
+async fn watch_primary_connection() -> Result<(), Error> {
+    let conn = Connection::system().await?;
+    let nm_proxy = NetworkManagerProxy::new(&conn).await?;
+
+    match log_in().await {
+        Ok(msg) => tracing::info!("{}", msg),
+        Err(e) => tracing::error!("{}", e),
+    }
+
+    let mut stream = nm_proxy.receive_primary_connection_changed().await;
+    tracing::info!("开始监听主连接变更");
+
+    while let Some(change) = stream.next().await {
+        match change.get().await {
+            Ok(new_primary) => {
+                tracing::info!("主连接已变更：{}", new_primary);
+
+                match log_in().await {
+                    Ok(msg) => tracing::info!("{}", msg),
+                    Err(e) => tracing::error!("自动登录失败：{}", e),
+                }
+            }
+            Err(e) => tracing::error!("获取变更后的主连接失败：{}", e),
+        }
+    }
+
+    Ok(())
+}
+
 async fn log_in() -> Result<String, Error> {
     // 检查是否需要登录
     match need_log_in().await {
@@ -175,7 +206,6 @@ async fn log_in() -> Result<String, Error> {
 
     let form_param = [
         ("cmd", "set"),
-        ("go", " 开通网络 "),
         ("name", &name),
         ("password", &password),
         ("type", "0"),
@@ -215,10 +245,14 @@ async fn main() {
 
     let listener = UnixListener::bind(SOCKET_FILE).unwrap();
 
-    match log_in().await {
-        Ok(msg) => tracing::info!("{}", msg),
-        Err(e) => tracing::error!("{}", e),
-    }
+    tokio::spawn(async {
+        loop {
+            if let Err(e) = watch_primary_connection().await {
+                tracing::error!("主连接监听异常：{}", e);
+            }
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+    });
 
     loop {
         let (mut socket, _) = listener.accept().await.unwrap();

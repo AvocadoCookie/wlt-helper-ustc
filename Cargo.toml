@@ -11,6 +11,7 @@ name = "wltcmd"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
+futures-util = "0.3"
 oo7 = { version = "0.6.0", features = ["native_crypto", "tracing"] }
 reqwest = { version = "0.13.2", features = ["form", "json"] }
 rpassword = "7.5.1"
