@@ -53,6 +53,18 @@ impl From<reqwest::Error> for Error {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub name: String,
+    #[serde(rename = "type", default = "default_type")]
+    pub r#type: u32,
+    #[serde(default = "default_exp")]
+    pub exp: u32,
+}
+
+const fn default_type() -> u32 {
+    0
+}
+
+const fn default_exp() -> u32 {
+    3600
 }
 
 impl Config {
@@ -65,8 +77,34 @@ impl Config {
 
     pub fn get_config() -> Result<Config, Error> {
         let path = Config::get_path();
-        let config = fs::read_to_string(Path::new(&path)).map_err(Error::ConfigRead)?;
-        let config = toml::from_str(&config)?;
+        let config_str = fs::read_to_string(Path::new(&path)).map_err(Error::ConfigRead)?;
+        let mut config: Config = toml::from_str(&config_str)?;
+
+        const VALID_EXP: &[u32] = &[0, 3600, 14400, 39600, 50400];
+        let mut corrected = false;
+
+        if config.r#type > 8 {
+            tracing::warn!(
+                "配置项 type 的值 {} 不合法（应为 0~8），已重置为默认值 0",
+                config.r#type
+            );
+            config.r#type = default_type();
+            corrected = true;
+        }
+
+        if !VALID_EXP.contains(&config.exp) {
+            tracing::warn!(
+                "配置项 exp 的值 {} 不合法（应为 0/3600/14400/39600/50400），已重置为默认值 3600",
+                config.exp
+            );
+            config.exp = default_exp();
+            corrected = true;
+        }
+
+        if corrected {
+            config.store()?;
+        }
+
         Ok(config)
     }
 

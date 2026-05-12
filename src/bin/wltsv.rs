@@ -4,14 +4,17 @@ use futures_util::StreamExt;
 
 use oo7::{Keyring, Secret};
 use reqwest::Client;
-use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::UnixListener, sync::OnceCell};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::UnixListener,
+    sync::OnceCell,
+};
 use tracing::Level;
 use wlt_helper::{
     Config, Error, SOCKET_FILE,
     nm::{
-        ConnectivityState, NetworkManagerProxy,
-        active_connection::ActiveConnectionProxy, device::DeviceProxy,
-        ip4_config::IP4ConfigProxy,
+        ConnectivityState, NetworkManagerProxy, active_connection::ActiveConnectionProxy,
+        device::DeviceProxy, ip4_config::IP4ConfigProxy,
     },
 };
 use zbus::Connection;
@@ -202,14 +205,17 @@ async fn log_in() -> Result<String, Error> {
         })
         .await;
 
+    let config = Config::get_config()?;
     let (name, password) = get_name_password().await?;
+    let type_str = config.r#type.to_string();
+    let exp_str = config.exp.to_string();
 
     let form_param = [
         ("cmd", "set"),
         ("name", &name),
         ("password", &password),
-        ("type", "0"),
-        ("exp", "0"),
+        ("type", &type_str),
+        ("exp", &exp_str),
     ];
     let response = client
         .get("http://wlt.ustc.edu.cn/cgi-bin/ip/")
