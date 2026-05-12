@@ -27,7 +27,8 @@ mkdir -p ~/.config/wlt-helper
 cp config.example.toml ~/.config/wlt-helper/config.toml
 ```
 
-编辑 `~/.config/wlt-helper/config.toml`，填入你的用户名：
+编辑 `~/.config/wlt-helper/config.toml`，填入你的用户名
+（也可使用命令 `wltcmd set` 填入）：
 
 ```toml
 name = "your_username"
