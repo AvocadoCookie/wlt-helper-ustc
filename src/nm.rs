@@ -1,19 +1,5 @@
 use zbus::{proxy, zvariant::OwnedObjectPath};
 
-pub trait Code {
-    fn code(&self) -> u32;
-}
-
-macro_rules! impl_code_for {
-    ($($ty: ty), *) => {
-        $(impl Code for $ty {
-            fn code(&self) -> u32 {
-                *self as u32
-            }
-        })*
-    };
-}
-
 #[repr(u32)]
 #[derive(Debug, Clone, Copy)]
 pub enum ConnectivityState {
@@ -23,8 +9,6 @@ pub enum ConnectivityState {
     Limited = 3,
     Full = 4,
 }
-
-impl_code_for!(ConnectivityState);
 
 #[proxy(
     default_service = "org.freedesktop.NetworkManager",
@@ -41,24 +25,22 @@ pub trait NetworkManager {
     fn check_connectivity(&self) -> zbus::Result<u32>;
 }
 
-pub mod connection {
-    pub mod active {
-        use zbus::{proxy, zvariant::OwnedObjectPath};
+pub mod active_connection {
+    use zbus::{proxy, zvariant::OwnedObjectPath};
 
-        #[proxy(
-            default_service = "org.freedesktop.NetworkManager",
-            interface = "org.freedesktop.NetworkManager.Connection.Active"
-        )]
-        pub trait ActiveConnection {
-            #[zbus(property)]
-            fn devices(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+    #[proxy(
+        default_service = "org.freedesktop.NetworkManager",
+        interface = "org.freedesktop.NetworkManager.Connection.Active"
+    )]
+    pub trait ActiveConnection {
+        #[zbus(property)]
+        fn devices(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 
-            #[zbus(property)]
-            fn id(&self) -> zbus::Result<String>;
+        #[zbus(property)]
+        fn id(&self) -> zbus::Result<String>;
 
-            #[zbus(property)]
-            fn r#type(&self) -> zbus::Result<String>;
-        }
+        #[zbus(property)]
+        fn r#type(&self) -> zbus::Result<String>;
     }
 }
 
@@ -81,7 +63,7 @@ pub mod device {
     }
 }
 
-pub mod ip4config {
+pub mod ip4_config {
     use std::collections::HashMap;
 
     use zbus::{proxy, zvariant::OwnedValue};

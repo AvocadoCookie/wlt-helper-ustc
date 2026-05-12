@@ -7,8 +7,9 @@ use tracing::Level;
 use wlt_helper::{
     Config, Error, SOCKET_FILE,
     nm::{
-        Code, ConnectivityState, NetworkManagerProxy, connection::active::ActiveConnectionProxy,
-        device::DeviceProxy, ip4config::IP4ConfigProxy,
+        ConnectivityState, NetworkManagerProxy,
+        active_connection::ActiveConnectionProxy, device::DeviceProxy,
+        ip4_config::IP4ConfigProxy,
     },
 };
 use zbus::Connection;
@@ -96,7 +97,7 @@ async fn get_primary_connection<'a>(
 
 async fn is_already_connected(de_proxy: &DeviceProxy<'_>) -> Result<bool, Error> {
     let connectivity = de_proxy.ip4_connectivity().await?;
-    if connectivity == ConnectivityState::Full.code() {
+    if connectivity == ConnectivityState::Full as u32 {
         tracing::debug!("网络已连通");
         return Ok(true);
     }
