@@ -2,6 +2,10 @@
 name = "wlt-helper"
 version = "0.1.0"
 edition = "2024"
+authors = [ "AvocadoCookie" ]
+description = "面向 Linux 的 USTC 网络通登录助手"
+repository = "https://github.com/AvocadoCookie/wlt-helper-ustc.git"
+license = "MIT"
 
 [[bin]]
 name = "wltsv"

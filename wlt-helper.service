@@ -1,0 +1,9 @@
+[Unit]
+Description=面向 Linux 的 USTC 网络通登录助手
+
+[Service]
+ExecStart=/usr/bin/wltsv
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
