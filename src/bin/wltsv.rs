@@ -24,9 +24,7 @@ const UA: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:150.0) Gecko/20100101 Firef
 static KEYRING: OnceCell<Keyring> = OnceCell::const_new();
 static CLIENT: OnceCell<Client> = OnceCell::const_new();
 
-async fn get_name_password() -> Result<(String, String), Error> {
-    let config = Config::get_config()?;
-
+async fn get_name_password(config: &Config) -> Result<(String, String), Error> {
     let keyring = KEYRING.get().unwrap();
     let mut attr = HashMap::new();
     attr.insert("app", "wlt-helper");
@@ -52,7 +50,7 @@ async fn get_name_password() -> Result<(String, String), Error> {
         }
     };
 
-    Ok((config.name, password))
+    Ok((config.name.clone(), password))
 }
 
 async fn need_log_in() -> Result<bool, Error> {
@@ -242,18 +240,24 @@ async fn ping_site(client: &Client, site: &str) -> bool {
 }
 
 async fn log_in() -> Result<String, Error> {
-    // 检查是否需要登录
-    match need_log_in().await {
-        Ok(flag) => {
-            if !flag {
-                tracing::info!("未检测到网络通连接，或网络通已登录");
-                return Ok("已连接，无需登录".into());
+    let config = Config::get_config()?;
+
+    // nm 模式下通过 D-Bus 检查是否需要登录；
+    // ping 模式下由 watcher 决定时机，跳过此检查直接登录
+    if config.check != CheckMethod::Ping {
+        match need_log_in().await {
+            Ok(flag) => {
+                if !flag {
+                    tracing::info!("未检测到网络通连接，或网络通已登录");
+                    return Ok("已连接，无需登录".into());
+                }
             }
-        }
-        Err(e) => {
-            return Err(e);
-        }
-    };
+            Err(e) => {
+                return Err(e);
+            }
+        };
+    }
+
     tracing::info!("检测到未登录的网络通连接，尝试登录");
 
     let client = CLIENT
@@ -265,8 +269,7 @@ async fn log_in() -> Result<String, Error> {
         })
         .await;
 
-    let config = Config::get_config()?;
-    let (name, password) = get_name_password().await?;
+    let (name, password) = get_name_password(&config).await?;
     let type_str = config.r#type.to_string();
     let exp_str = config.exp.to_string();
 
